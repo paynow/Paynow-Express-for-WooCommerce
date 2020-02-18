@@ -1,0 +1,19 @@
+*** Paynow Changelog ***
+
+2 July, 2014 - version 1.0
+ * First Release
+
+*** Paynow Changelog ***
+
+16 July, 2014 - version 1.0
+ * First Release
+-installable, notify url tested, payment info updating
+
+28 March 2019
+1.2.0
+- restructured the plugin to align it with woocommerce standards and OOP
+- removed unused code
+- removed all curl requests and replaced with wp_remote
+- Added multisite support
+1.2.1
+- fixed plugin not appearing on multisite if not network activated
