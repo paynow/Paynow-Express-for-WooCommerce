@@ -1,6 +1,6 @@
-# Paynow for WooCommerce 
+# Paynow Express for WooCommerce 
 
-A payment gateway for Paynow. A Paynow merchant account, merchant key and merchant ID are required for this gateway to function.
+A payment gateway for Paynow Express. A Paynow merchant account, merchant key and merchant ID are required for this gateway to function.
 
 ## Important Note
 
