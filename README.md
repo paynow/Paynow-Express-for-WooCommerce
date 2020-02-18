@@ -3,7 +3,7 @@
 A payment gateway for Paynow Express. A Paynow merchant account, merchant key and merchant ID are required for this gateway to function.
 
 ## Important Note
-<b style="color: red; text-transform: uppercase;">This project is currently in alpha. Please use with caution and report any issues you face.</b> 
+**THIS PROJECT IS CURRENTLY IN ALPHA. PLEASE USE WITH CAUTION AND REPORT ANY ISSUES YOU FACE.**
 
 An SSL certificate is recommended for additional safety and security for your customers.
 
