@@ -68,6 +68,14 @@ class WC_Gateway_PaynowExpress extends WC_Payment_Gateway {
 		
 		add_action( 'woocommerce_receipt_paynowexpress', array( $this, 'receipt_page' ) );
 
+
+		//Add  Payment Mobile No.
+		add_action('woocommerce_after_checkout_billing_form', array($this, 'add_custom_checkout_field_after_phone'));
+
+		// Save ecocash number along with checkout info
+		add_action('woocommerce_checkout_create_order', array($this, 'save_custom_checkout_field_value'));
+
+		add_action('wp_footer', array($this, 'custom_checkout_script'));
 		// Check if the base currency supports this gateway.
 		if ( ! $this->is_valid_for_use() )
 			$this->enabled = false;
@@ -218,7 +226,121 @@ class WC_Gateway_PaynowExpress extends WC_Payment_Gateway {
 		// <input id="express_mobileNo" name="express_mobileNo" type="text" autocomplete="off">
 		// </div>';
     } // End payment_fields()
+/**
+	 * Add required mobile money fields.
+	 *
+	 * @since 1.0.0
+	 */
 
+	 public function add_custom_checkout_field_after_phone($checkout)
+	 {
+		 echo '<div id="custom_checkout_field" class="paynow_express_payment_mobile"><h3>' . __('Payment Fields') . '</h3><small class="text-small" style="font-size:12px; color:grey;">Only Applicable for mobile money transactions</small>';
+ 
+		 // Display the select_wallet field
+		 woocommerce_form_field('select_wallet', array(
+			 'type' => 'select',
+			 'class' => array('input-select'),
+			 'label' => __('Select Wallet'),
+			 'id' => 'select_wallet',
+			 'required' => true,
+			 'options' => array(
+				 'ecocash' => 'Ecocash',
+				 'onemoney' => 'OneMoney',
+				 'innbucks' => 'Innbucks'
+			 )
+		 ), $checkout->get_value('select_wallet'));
+ 
+		 woocommerce_form_field('ecocash_mobile_number', array(
+			 'type' => 'text',
+			 'class' => array('input-text'),
+			 'label' => __('Payment Mobile No'),
+			 'id' => 'ecocash_mobile_number',
+			 'required' => true,
+ 
+		 ), $checkout->get_value('ecocash_mobile_number'));
+ 
+		 echo '</div>';
+	 }
+
+	 /**
+	 * Also Save the ecocash or onemoney number when u save checkout data.
+	 *
+	 * 
+	 * @since 1.0.0
+	 */
+
+	public function save_custom_checkout_field_value($order)
+	{
+		if (!empty($_POST['select_wallet'])) {
+			$order->update_meta_data('_select_wallet', sanitize_text_field($_POST['select_wallet']));
+		}
+		if (!empty($_POST['ecocash_mobile_number'])) {
+			$order->update_meta_data('_ecocash_mobile_number', sanitize_text_field($_POST['ecocash_mobile_number']));
+		}
+	}
+
+	public function custom_checkout_script()
+	{
+		if (is_checkout()) {
+		?>
+			<script>
+				jQuery(function($) {
+					// Function to handle the visibility of the radio button
+					function handlePaymentMethodVisibility() {
+						var selectedPaymentMethod = $('input[name="payment_method"]:checked').val();
+						var targetPaymentMethod = 'paynowexpress';
+						var ecocashField = $('#ecocash_mobile_number');
+						if (selectedPaymentMethod === targetPaymentMethod) {
+							ecocashField.attr('required', 'required');
+							$('.paynow_express_payment_mobile').show(); // Show the payment mobile number field
+
+
+						} else {
+							ecocashField.removeAttr('required')
+							$('.paynow_express_payment_mobile').hide(); // Show the payment mobile number field
+							;
+						}
+					}
+
+					// Initial visibility check on page load
+					handlePaymentMethodVisibility();
+
+					// Handle visibility on payment method change
+					$(document.body).on('change', 'input[name="payment_method"]', function() {
+						handlePaymentMethodVisibility();
+					});
+
+					// Call the function on page load
+					$(document).ready(function() {
+						handlePaymentMethodVisibility();
+					});
+				});
+
+				document.addEventListener('DOMContentLoaded', function() {
+					const selectWalletField = document.getElementById('select_wallet');
+					const ecocashMobileNumberField = document.getElementById('ecocash_mobile_number');
+					const checkoutForm = document.getElementsByClassName('woocommerce-checkout');
+
+					checkoutForm[0].addEventListener('submit', function(event) {
+						if (selectWalletField.value === 'onemoney') {
+							const netoneRegex = /^(071|71)/;
+							if (!netoneRegex.test(ecocashMobileNumberField.value)) {
+								event.preventDefault();
+								alert('For One Money wallet, the mobile number should start with 071 or 71.');
+							}
+						} else if (selectWalletField.value === 'ecocash') {
+							const ecocashRegex = /^(078|78|77|077)/;
+							if (!ecocashRegex.test(ecocashMobileNumberField.value)) {
+								event.preventDefault();
+								alert('For Ecocash wallet, the mobile number should start with 078, 78, 77, or 077.');
+							}
+						}
+					});
+				});
+			</script>
+			<?php
+		}
+	}
 	/**
 	 * Process the payment and return the result.
 	 * @param int $order_id
