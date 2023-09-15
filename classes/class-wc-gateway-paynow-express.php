@@ -909,21 +909,6 @@ class WC_Gateway_PaynowExpress extends WC_Payment_Gateway {
 				);
 			}
 
-			$payment_meta['PollUrl'] = $msg["pollurl"];
-			$payment_meta['PaynowReference'] = $msg["paynowreference"];
-			$payment_meta['Amount'] = $msg["amount"];
-			$payment_meta['Status'] = $msg["status"];
-			update_post_meta($order_id, '_wc_paynowexpress_payment_meta', $payment_meta);
-
-			if (trim(strtolower($msg["status"])) == ps_cancelled) {
-				$order->update_status('cancelled',  __('Payment cancelled on Paynow.', 'woothemes'));
-				$order->save();
-			} elseif (trim(strtolower($msg["status"])) == ps_failed) {
-				$order->update_status('failed', __('Payment failed on Paynow.', 'woothemes'));
-				$order->save();
-			} elseif (trim(strtolower($msg["status"])) == ps_paid || trim(strtolower($msg["status"])) == ps_awaiting_delivery || trim(strtolower($msg["status"])) == ps_delivered) {
-				$this->process_payment($order_id, "callback");
-			}
 		}
 		return json_encode($data);
 	}//End of  express check status
@@ -976,6 +961,22 @@ class WC_Gateway_PaynowExpress extends WC_Payment_Gateway {
 		if ($validateHash) {
 			// Save the 'reference' data to the order
 			$order->update_meta_data('paynow_payment_info', $msg);
+
+			$payment_meta['PollUrl'] = $msg["pollurl"];
+			$payment_meta['PaynowReference'] = $msg["paynowreference"];
+			$payment_meta['Amount'] = $msg["amount"];
+			$payment_meta['Status'] = $msg["status"];
+			update_post_meta($order_id, '_wc_paynowexpress_payment_meta', $payment_meta);
+
+			if (trim(strtolower($msg["status"])) == ps_cancelled) {
+				$order->update_status('cancelled',  __('Payment cancelled on Paynow.', 'woothemes'));
+				$order->save();
+			} elseif (trim(strtolower($msg["status"])) == ps_failed) {
+				$order->update_status('failed', __('Payment failed on Paynow.', 'woothemes'));
+				$order->save();
+			} elseif (trim(strtolower($msg["status"])) == ps_paid || trim(strtolower($msg["status"])) == ps_awaiting_delivery || trim(strtolower($msg["status"])) == ps_delivered) {
+				$order->payment_complete();
+			}
 			$order->save();
 			return new WP_REST_Response(array('message' => 'Reference data saved to order.'));
 		} else {
