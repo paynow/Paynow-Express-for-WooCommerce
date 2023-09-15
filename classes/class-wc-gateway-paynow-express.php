@@ -21,7 +21,7 @@ class WC_Gateway_PaynowExpress extends WC_Payment_Gateway
 	protected $merchant_key;
 	protected $merchant_id_usd;
 	protected $merchant_key_usd;
-
+	protected $merchant_currency;
 	public $version = WC_PAYNOW_EXPRESS_VERSION;
 
 	public function __construct()
@@ -53,6 +53,7 @@ class WC_Gateway_PaynowExpress extends WC_Payment_Gateway
 		$this->merchant_key = $this->settings['merchant_key'];
 		$this->merchant_id_usd = $this->settings['merchant_id_usd'];
 		$this->merchant_key_usd = $this->settings['merchant_key_usd'];
+		$this->merchant_currency = $this->settings['currency'];
 		$this->initiate_transaction_url = $this->settings['paynow_initiate_transaction_url'];
 
 
@@ -112,6 +113,17 @@ class WC_Gateway_PaynowExpress extends WC_Payment_Gateway
 				'type' => 'text',
 				'description' => __('This controls the description which the user sees during checkout.', 'woothemes'),
 				'default' => ''
+			),
+
+			'currency' => array(
+				'title' => __('Currency', 'woothemes'),
+				'type' => 'select',
+				'description' => __('Select the currency you are using for your orders', 'woothemes'),
+				'options' => array(
+					'usd' => __('USD', 'woothemes'),
+					'zwl' => __('ZWL Local', 'woothemes'),
+				),
+				'default' => 'usd', // Default selection
 			),
 			'merchant_id' => array(
 				'title' => __('Merchant ID(local)', 'woothemes'),
@@ -247,6 +259,19 @@ class WC_Gateway_PaynowExpress extends WC_Payment_Gateway
 	{
 		echo '<div id="custom_checkout_field" class="paynow_express_payment_mobile"><h3>' . __('Payment Fields') . '</h3><small class="text-small" style="font-size:12px; color:grey;">Only Applicable for mobile money transactions</small>';
 
+		//Show Payment options according to what merchant has selected as their currency.
+		$options = array();
+		if ($this->merchant_currency == "usd") {
+			$options = array(
+				'ecocash_usd' => 'Ecocash USD',
+				'innbucks' => 'Innbucks'
+			);
+		} else {
+			$options = array(
+				'ecocash' => 'Ecocash',
+				'onemoney' => 'OneMoney'
+			);
+		}
 		// Display the select_wallet field
 		woocommerce_form_field('select_wallet', array(
 			'type' => 'select',
@@ -254,16 +279,11 @@ class WC_Gateway_PaynowExpress extends WC_Payment_Gateway
 			'label' => __('Select Wallet'),
 			'id' => 'select_wallet',
 			'required' => true,
-			'options' => array(
-				'ecocash' => 'Ecocash',
-				'onemoney' => 'OneMoney',
-				'innbucks' => 'Innbucks'
-			)
+			'options' => $options
 		), $checkout->get_value('select_wallet'));
 
 		woocommerce_form_field('ecocash_mobile_number', array(
-			'type' => 'text',
-			'class' => array('input-text'),
+			'type' => 'tel',
 			'label' => __('Payment Mobile No'),
 			'id' => 'ecocash_mobile_number',
 			'required' => true,
@@ -357,27 +377,27 @@ class WC_Gateway_PaynowExpress extends WC_Payment_Gateway
 					});
 				});
 
-				document.addEventListener('DOMContentLoaded', function() {
-					const selectWalletField = document.getElementById('select_wallet');
-					const ecocashMobileNumberField = document.getElementById('ecocash_mobile_number');
-					const checkoutForm = document.getElementsByClassName('woocommerce-checkout');
+				// document.addEventListener('DOMContentLoaded', function() {
+				// 	const selectWalletField = document.getElementById('select_wallet');
+				// 	const ecocashMobileNumberField = document.getElementById('ecocash_mobile_number');
+				// 	const checkoutForm = document.getElementsByClassName('woocommerce-checkout');
 
-					checkoutForm[0].addEventListener('submit', function(event) {
-						if (selectWalletField.value === 'onemoney') {
-							const netoneRegex = /^(071|71)/;
-							if (!netoneRegex.test(ecocashMobileNumberField.value)) {
-								event.preventDefault();
-								alert('For One Money wallet, the mobile number should start with 071 or 71.');
-							}
-						} else if (selectWalletField.value === 'ecocash') {
-							const ecocashRegex = /^(078|78|77|077)/;
-							if (!ecocashRegex.test(ecocashMobileNumberField.value)) {
-								event.preventDefault();
-								alert('For Ecocash wallet, the mobile number should start with 078, 78, 77, or 077.');
-							}
-						}
-					});
-				});
+				// 	checkoutForm[0].addEventListener('submit', function(event) {
+				// 		if (selectWalletField.value === 'onemoney') {
+				// 			const netoneRegex = /^(071|71)/;
+				// 			if (!netoneRegex.test(ecocashMobileNumberField.value)) {
+				// 				event.preventDefault();
+				// 				alert('For One Money wallet, the mobile number should start with 071 or 71.');
+				// 			}
+				// 		} else if (selectWalletField.value === 'ecocash') {
+				// 			const ecocashRegex = /^(078|78|77|077)/;
+				// 			if (!ecocashRegex.test(ecocashMobileNumberField.value)) {
+				// 				event.preventDefault();
+				// 				alert('For Ecocash wallet, the mobile number should start with 078, 78, 77, or 077.');
+				// 			}
+				// 		}
+				// 	});
+				// });
 			</script>
 			<?php
 		}
@@ -460,8 +480,12 @@ class WC_Gateway_PaynowExpress extends WC_Payment_Gateway
 			// $custPhone = 		$order->get_billing_phone();
 			$custPhone =  !empty($order->get_meta('_ecocash_mobile_number')) ? $order->get_meta('_ecocash_mobile_number') : $order->get_billing_phone();
 			$method =  !empty($order->get_meta('_select_wallet')) ? $order->get_meta('_select_wallet') : "ecocash";
-			$MerchantId =       $method == "innbucks" ? $this->merchant_id_usd : $this->merchant_id;
-			$MerchantKey =    	 $method == "innbucks" ? $this->merchant_key_usd : $this->merchant_key;;
+
+
+			$MerchantId =       $method == "innbucks" || $method == "ecocash_usd"  ? $this->merchant_id_usd : $this->merchant_id;
+			$MerchantKey =    	  $method == "innbucks" || $method == "ecocash_usd" ? $this->merchant_key_usd : $this->merchant_key;
+
+			$method = $method !== "ecocash_usd" ?  $method : "ecocash";
 			//set POST variables
 			$values = array(
 				'resulturl' => $ConfirmUrl,
@@ -994,7 +1018,7 @@ class WC_Gateway_PaynowExpress extends WC_Payment_Gateway
 		// Get payment method picked by user
 		$payment_method = get_post_meta($order_id, 'user_payment_method', true);
 
-		$MerchantKey = $payment_method == "innbucks" ? $this->merchant_key_usd : $this->merchant_key;
+		$MerchantKey =  $payment_method == "innbucks" || $payment_method == "ecocash_usd" ? $this->merchant_key_usd : $this->merchant_key;
 		//Remove order_id from request to verify hash;
 		$msg = array();
 		foreach ($request_data as $key => $value) {
