@@ -15,6 +15,12 @@ class WC_Gateway_PaynowExpress extends WC_Payment_Gateway {
 
 	public $version = WC_PAYNOW_EXPRESS_VERSION;
 
+	protected $callback;
+	protected $initiate_transaction_url;
+	protected $merchant_id;
+	protected $merchant_key;
+	protected $merchant_id_usd;
+	protected $merchant_key_usd;
 	public function __construct() {
         global $woocommerce;
         $this->id			= 'paynowexpress';
