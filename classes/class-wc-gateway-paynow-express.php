@@ -929,4 +929,57 @@ class WC_Gateway_PaynowExpress extends WC_Payment_Gateway {
 	}//End of  express check status
 
 	
+	/**
+	 * Validate order id being passed from paynow response
+	 */
+	public function validate_order_id($value, $request, $param)
+	{
+		// Validate the order ID here, e.g., check if it's a valid WooCommerce order ID
+		if (!wc_get_order($value)) {
+			return new WP_Error('invalid_order_id', 'Invalid order ID.', array('status' => 400));
+		}
+		return $value;
+	}
+
+
+	/**
+	 * Listens for payment info  being sent from paynow 
+	 * @var $request Request sent
+	 * @return WC_Rest_Response true if data was stored succesfully.
+	 */
+
+	public function wc_express_listen_status(WP_REST_Request $request)
+	{
+		$order_id = $request['order_id'];
+		$order = wc_get_order($order_id);
+		$order;
+		if (!$order) {
+			return new WP_Error('invalid_order_id', 'Invalid order ID.', array('status' => 400));
+		}
+
+		// Get the  data from the request body
+		$request_data = $request->get_params();
+
+		// Get payment method picked by user
+		$payment_method = get_post_meta($order_id, 'user_payment_method', true);
+
+		$MerchantKey = $payment_method == "innbucks" ? $this->merchant_key_usd : $this->merchant_key;
+		//Remove order_id from request to verify hash;
+		$msg = array();
+		foreach ($request_data as $key => $value) {
+			if ($key !== "order_id") {
+				$msg[$key] = $value;
+			}
+		}
+		$validateHash = (new WC_PaynowExpress_Helper)->CreateHash($msg, $MerchantKey);
+
+		if ($validateHash) {
+			// Save the 'reference' data to the order
+			$order->update_meta_data('paynow_payment_info', $msg);
+			$order->save();
+			return new WP_REST_Response(array('message' => 'Reference data saved to order.'));
+		} else {
+			return new WP_Error('missing_reference', 'Invalid Hash', array('status' => 400));
+		}
+	}
 } // End Class
