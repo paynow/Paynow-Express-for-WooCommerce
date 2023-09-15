@@ -871,63 +871,62 @@ class WC_Gateway_PaynowExpress extends WC_Payment_Gateway {
 		}
 	}// End wc_paynow_process_paynow_notify()
 
-	function wc_express_check_status(WP_REST_Request $request) {
+/**
+	 * Check if order payment status has been updated to Cancelled or Paid
+	 * 
+	 * The order payment details from paynow are being updated in wc_express_listen_status() method
+	 */
+	function wc_express_check_status(WP_REST_Request $request)
+	{
 
 		$data = [];
 
 		// Check the request method is POST
-		if ( isset( $_SERVER['REQUEST_METHOD'] ) && $_SERVER['REQUEST_METHOD'] != 'POST' && !isset($request['id']) ) {
-			return json_encode( $data );
-		}
-		
-		$order_id = $request['id'];
-		
-		$order = wc_get_order( $order_id );
-		
-		$payment_meta = get_post_meta( $order_id, '_wc_paynowexpress_payment_meta', true );
-		
-		if($payment_meta)
-		{
-			
-			$url = $payment_meta["PollUrl"];
-			
-			//execute post
-			$response = wp_remote_request($url, [
-				'timeout' => 45,
-				'method' => 'POST',
-				'body' => ''
-			]);
-	
-			$result = $response['body'];
-			
-			if($result)
-			{
-				$msg = (new WC_PaynowExpress_Helper)->ParseMsg($result);
-	
-				$MerchantKey =  $this->merchant_key;
-				$validateHash = (new WC_PaynowExpress_Helper)->CreateHash($msg, $MerchantKey);
-				
-				if($validateHash != $msg["hash"]){
-				}
-				else
-				{
-					if ( trim( strtolower( $msg["status"]) ) == ps_paid || trim( strtolower( $msg["status"] ) ) == ps_awaiting_delivery || trim( strtolower( $msg["status"] ) ) == ps_delivered ) {	
-						$data = array(
-							'complete' => true,
-							'status' => 'paid',
-						);
-					} else if ( strtolower( $msg["status"]) == ps_cancelled || strtolower( $msg["status"]) == ps_failed) {
-						$data = array(
-							'complete' => false,
-							'status' => $msg["status"],
-							'url' => $order->get_checkout_payment_url( true )
-						);
-					}
-				}
-			}
+		if (isset($_SERVER['REQUEST_METHOD']) && $_SERVER['REQUEST_METHOD'] != 'POST' && !isset($request['id'])) {
+			return json_encode($data);
 		}
 
-		return json_encode( $data );
-	}
+		$order_id = $request['id'];
+
+		$order = wc_get_order($order_id);
+		$payment_meta = get_post_meta($order_id, '_wc_paynowexpress_payment_meta', true);
+
+
+		$msg = get_post_meta($order_id, 'paynow_payment_info', true);
+
+		if ($msg !== '') {
+			if (trim(strtolower($msg["status"])) == ps_paid || trim(strtolower($msg["status"])) == ps_awaiting_delivery || trim(strtolower($msg["status"])) == ps_delivered) {
+
+				$data = array(
+					'complete' => true,
+					'status' => 'paid'
+				);
+			} else if (strtolower($msg["status"]) == ps_cancelled || strtolower($msg["status"]) == ps_failed) {
+				$data = array(
+					'complete' => false,
+					'status' => $msg["status"],
+					'url' => $order->get_checkout_payment_url(false)
+				);
+			}
+
+			$payment_meta['PollUrl'] = $msg["pollurl"];
+			$payment_meta['PaynowReference'] = $msg["paynowreference"];
+			$payment_meta['Amount'] = $msg["amount"];
+			$payment_meta['Status'] = $msg["status"];
+			update_post_meta($order_id, '_wc_paynowexpress_payment_meta', $payment_meta);
+
+			if (trim(strtolower($msg["status"])) == ps_cancelled) {
+				$order->update_status('cancelled',  __('Payment cancelled on Paynow.', 'woothemes'));
+				$order->save();
+			} elseif (trim(strtolower($msg["status"])) == ps_failed) {
+				$order->update_status('failed', __('Payment failed on Paynow.', 'woothemes'));
+				$order->save();
+			} elseif (trim(strtolower($msg["status"])) == ps_paid || trim(strtolower($msg["status"])) == ps_awaiting_delivery || trim(strtolower($msg["status"])) == ps_delivered) {
+				$this->process_payment($order_id, "callback");
+			}
+		}
+		return json_encode($data);
+	}//End of  express check status
+
 	
 } // End Class
