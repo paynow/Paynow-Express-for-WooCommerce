@@ -47,6 +47,8 @@ class WC_Gateway_PaynowExpress extends WC_Payment_Gateway {
 		// Setup default merchant data.
 		$this->merchant_id = $this->settings['merchant_id'];
 		$this->merchant_key = $this->settings['merchant_key'];
+		$this->merchant_id_usd = $this->settings['merchant_id_usd'];
+		$this->merchant_key_usd = $this->settings['merchant_key_usd'];
 		$this->initiate_transaction_url = $this->settings['paynow_initiate_transaction_url'];
 
 
@@ -108,6 +110,18 @@ class WC_Gateway_PaynowExpress extends WC_Payment_Gateway {
 				'title' => __( 'Merchant Key', 'woothemes' ),
 				'type' => 'text',
 				'description' => __( 'This is the merchant key, received from Paynow.', 'woothemes' ),
+				'default' => ''
+			),
+			'merchant_id_usd' => array(
+				'title' => __('Merchant ID(USD)', 'woothemes'),
+				'type' => 'text',
+				'description' => __('This is the merchant ID for USD, received from Paynow.', 'woothemes'),
+				'default' => ''
+			),
+			'merchant_key_usd' => array(
+				'title' => __('Merchant Key(USD)', 'woothemes'),
+				'type' => 'text',
+				'description' => __('This is the merchant key for USD, received from Paynow.', 'woothemes'),
 				'default' => ''
 			),
 			'paynow_initiate_transaction_url' => array(
