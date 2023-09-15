@@ -15,14 +15,15 @@
 class WC_Gateway_PaynowExpress extends WC_Payment_Gateway
 {
 
-	public $version = WC_PAYNOW_EXPRESS_VERSION;
-
 	protected $callback;
 	protected $initiate_transaction_url;
 	protected $merchant_id;
 	protected $merchant_key;
 	protected $merchant_id_usd;
 	protected $merchant_key_usd;
+
+	public $version = WC_PAYNOW_EXPRESS_VERSION;
+
 	public function __construct()
 	{
 		global $woocommerce;
@@ -71,7 +72,6 @@ class WC_Gateway_PaynowExpress extends WC_Payment_Gateway
 
 		add_action('woocommerce_receipt_paynowexpress', array($this, 'receipt_page'));
 
-
 		//Add  Payment Mobile No.
 		add_action('woocommerce_after_checkout_billing_form', array($this, 'add_custom_checkout_field_after_phone'));
 
@@ -79,6 +79,7 @@ class WC_Gateway_PaynowExpress extends WC_Payment_Gateway
 		add_action('woocommerce_checkout_create_order', array($this, 'save_custom_checkout_field_value'));
 
 		add_action('wp_footer', array($this, 'custom_checkout_script'));
+
 		// Check if the base currency supports this gateway.
 		if (!$this->is_valid_for_use())
 			$this->enabled = false;
@@ -113,15 +114,15 @@ class WC_Gateway_PaynowExpress extends WC_Payment_Gateway
 				'default' => ''
 			),
 			'merchant_id' => array(
-				'title' => __('Merchant ID', 'woothemes'),
+				'title' => __('Merchant ID(local)', 'woothemes'),
 				'type' => 'text',
-				'description' => __('This is the merchant ID, received from Paynow.', 'woothemes'),
+				'description' => __('This is the merchant ID for local currency, received from Paynow.', 'woothemes'),
 				'default' => ''
 			),
 			'merchant_key' => array(
-				'title' => __('Merchant Key', 'woothemes'),
+				'title' => __('Merchant Key(local)', 'woothemes'),
 				'type' => 'text',
-				'description' => __('This is the merchant key, received from Paynow.', 'woothemes'),
+				'description' => __('This is the merchant key for local currency, received from Paynow.', 'woothemes'),
 				'default' => ''
 			),
 			'merchant_id_usd' => array(
@@ -205,16 +206,16 @@ class WC_Gateway_PaynowExpress extends WC_Payment_Gateway
 
 		if ('USD' == get_option('woocommerce_currency')) {
 		?><table class="form-table"><?php
-										// Generate the HTML For the settings form.
-										$this->generate_settings_html();
-										?></table><!--/.form-table--><?php
-										} else {
-											?>
+									// Generate the HTML For the settings form.
+									$this->generate_settings_html();
+									?></table><!--/.form-table--><?php
+																} else {
+																	?>
 			<div class="inline error">
 				<p><strong><?php _e('Gateway Disabled', 'woothemes'); ?></strong> <?php echo sprintf(__('Choose United States Dollar ($/USD) as your store currency in <a href="%s">Pricing Options</a> to enable the Paynow Express Gateway.', 'woocommerce'), admin_url('?page=woocommerce&tab=catalog')); ?></p>
 			</div>
 		<?php
-										} // End check currency
+																} // End check currency
 		?>
 		<?php
 	} // End admin_options()
@@ -235,6 +236,7 @@ class WC_Gateway_PaynowExpress extends WC_Payment_Gateway
 		// <input id="express_mobileNo" name="express_mobileNo" type="text" autocomplete="off">
 		// </div>';
 	} // End payment_fields()
+
 	/**
 	 * Add required mobile money fields.
 	 *
@@ -269,6 +271,36 @@ class WC_Gateway_PaynowExpress extends WC_Payment_Gateway
 		), $checkout->get_value('ecocash_mobile_number'));
 
 		echo '</div>';
+	}
+
+	public function validate_select_wallet_field($fields, $errors)
+	{
+		if (!isset($_POST['select_wallet']) || empty($_POST['select_wallet'])) {
+			$errors->add('select_wallet_error', __('Please select a wallet.'));
+		} else {
+			$selected_wallet = sanitize_text_field($_POST['select_wallet']);
+			if ($selected_wallet === 'onemoney') {
+				$ecocash_mobile_number = isset($_POST['ecocash_mobile_number']) ? sanitize_text_field($_POST['ecocash_mobile_number']) : '';
+				if (!empty($ecocash_mobile_number) && !preg_match('/^(071|71)\d{7}$/', $ecocash_mobile_number)) {
+					$errors->add('ecocash_mobile_number_error', __('For OneMoney wallet, the mobile number should start with 071 or 71.'));
+				}
+			} elseif ($selected_wallet === 'ecocash') {
+				$ecocash_mobile_number = isset($_POST['ecocash_mobile_number']) ? sanitize_text_field($_POST['ecocash_mobile_number']) : '';
+				if (!empty($ecocash_mobile_number) && !preg_match('/^(078|78|77|077)\d{6}$/', $ecocash_mobile_number)) {
+					$errors->add('ecocash_mobile_number_error', __('For Ecocash wallet, the mobile number should start with 078, 78, 77, or 077.'));
+				}
+			}
+		}
+	}
+
+	function validate_ecocash_mobile_number_field($fields, $errors)
+	{
+		$selected_wallet = isset($_POST['select_wallet']) ? sanitize_text_field($_POST['select_wallet']) : '';
+		$ecocash_mobile_number = isset($_POST['ecocash_mobile_number']) ? sanitize_text_field($_POST['ecocash_mobile_number']) : '';
+
+		if (empty($ecocash_mobile_number) && $selected_wallet !== 'onemoney') {
+			$errors->add('ecocash_mobile_number_error', __('Please enter a mobile number.'));
+		}
 	}
 
 	/**
@@ -350,12 +382,15 @@ class WC_Gateway_PaynowExpress extends WC_Payment_Gateway
 			<?php
 		}
 	}
+
 	/**
 	 * Process the payment and return the result.
 	 * @param int $order_id
 	 * @param string $from tells process payment whether the method call is from paynow return (callback) or not
 	 * @since 1.0.0
 	 */
+
+
 	function process_payment($order_id, $from = '')
 	{
 
@@ -389,20 +424,16 @@ class WC_Gateway_PaynowExpress extends WC_Payment_Gateway
 
 		//get current order
 		$order = wc_get_order($order_id); // added code in Woo Commerce that needs to be changed
-		$payment_status = $order->get_status();
-		if ($payment_status === 'pending') {
-			// Payment has already been initiated, no need to process again
-			return;
-		}
-		$payment_status = $order->get_status();
-		if ($payment_status === 'pending') {
-			// Payment has already been initiated, no need to process again
-			return;
-		}
 		$checkout_url = $order->get_checkout_payment_url();
 
 		//Response body
+		// $payment_status = $order->get_status();
+		$payment_method = get_post_meta($order_id, 'user_payment_method', true);
 
+		if ($payment_method != '') {
+			// Payment has already been initiated, no need to process again
+			return;
+		}
 		$body = array();
 
 		// Check payment
@@ -740,7 +771,7 @@ class WC_Gateway_PaynowExpress extends WC_Payment_Gateway
 					// var overlay = document.createElement('div');
 
 					(function pollTransaction() {
-
+						console.log('<?= $ReturnUrl ?>');
 						setTimeout(function() {
 							var params = {
 								method: 'POST'
@@ -756,6 +787,7 @@ class WC_Gateway_PaynowExpress extends WC_Payment_Gateway
 
 										var data = JSON.parse(res);
 
+										console.log(data);
 										if (data.hasOwnProperty('complete')) {
 											if (data.complete) {
 												window.location.replace(data.url);
@@ -793,7 +825,7 @@ class WC_Gateway_PaynowExpress extends WC_Payment_Gateway
 		static $fh = 0;
 
 		if ($close) {
-			@fclose($fh);
+			// 	@fclose($fh);
 		} else {
 			// If file doesn't exist, create it
 			if (!$fh) {
@@ -830,7 +862,7 @@ class WC_Gateway_PaynowExpress extends WC_Payment_Gateway
 		$order_id = $_GET['order_id'];
 
 		$order = wc_get_order($order_id);
-
+		$payment_status = $order->get_status();
 		$payment_meta = get_post_meta($order_id, '_wc_paynowexpress_payment_meta', true);
 
 		if ($payment_meta) {
@@ -848,7 +880,7 @@ class WC_Gateway_PaynowExpress extends WC_Payment_Gateway
 			if ($result) {
 				$msg = (new WC_PaynowExpress_Helper)->ParseMsg($result);
 
-				$MerchantKey =  $this->merchant_key;
+				$MerchantKey =  array_key_exists("authorizationcode", $msg) ? $this->merchant_key : $this->merchant_key_usd;
 				$validateHash = (new WC_PaynowExpress_Helper)->CreateHash($msg, $MerchantKey);
 
 				if ($validateHash != $msg["hash"]) {
@@ -883,6 +915,7 @@ class WC_Gateway_PaynowExpress extends WC_Payment_Gateway
 			}
 		}
 	} // End wc_paynow_process_paynow_notify()
+
 
 	/**
 	 * Check if order payment status has been updated to Cancelled or Paid
@@ -925,12 +958,11 @@ class WC_Gateway_PaynowExpress extends WC_Payment_Gateway
 			}
 		}
 		return json_encode($data);
-	} //End of  express check status
+	}
 
 
-	/**
-	 * Validate order id being passed from paynow response
-	 */
+
+
 	public function validate_order_id($value, $request, $param)
 	{
 		// Validate the order ID here, e.g., check if it's a valid WooCommerce order ID
@@ -973,12 +1005,14 @@ class WC_Gateway_PaynowExpress extends WC_Payment_Gateway
 		$validateHash = (new WC_PaynowExpress_Helper)->CreateHash($msg, $MerchantKey);
 
 		if ($validateHash) {
+
 			// Save the 'reference' data to the order
-			$prevous = get_post_meta($order_id, 'paynow_payment_info', true);
 
-
+			$order_status = get_post_status($order->get_id());
+			if ($order_status != "pending") {
+			}
 			$order->update_meta_data('paynow_payment_info', $msg);
-
+			$order->save();
 			$payment_meta['PollUrl'] = $msg["pollurl"];
 			$payment_meta['PaynowReference'] = $msg["paynowreference"];
 			$payment_meta['Amount'] = $msg["amount"];
@@ -994,7 +1028,9 @@ class WC_Gateway_PaynowExpress extends WC_Payment_Gateway
 			} elseif (trim(strtolower($msg["status"])) == ps_paid || trim(strtolower($msg["status"])) == ps_awaiting_delivery || trim(strtolower($msg["status"])) == ps_delivered) {
 				$order->payment_complete();
 			}
-			$order->save();
+
+
+
 			return new WP_REST_Response(array('message' => 'Reference data saved to order.'));
 		} else {
 			return new WP_Error('missing_reference', 'Invalid Hash', array('status' => 400));
