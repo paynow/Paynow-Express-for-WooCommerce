@@ -373,36 +373,44 @@ class WC_Gateway_PaynowExpress extends WC_Payment_Gateway {
 	 *
 	 * @since 1.0.0
 	 */
-	function receipt_page( $order_id ) {
+	function receipt_page($order_id)
+	{
 		global $woocommerce;
-		
+
 		//get current order
-		$order = wc_get_order( $order_id ); // added code in Woo Commerce that needs to be changed
-		$checkout_url = $order->get_checkout_payment_url( );
-		
+		$order = wc_get_order($order_id); // added code in Woo Commerce that needs to be changed
+		$checkout_url = $order->get_checkout_payment_url();
+
+		//Response body
+
+		$body = array();
+
 		// Check payment
-		if ( ! $order_id ) {
+		if (!$order_id) {
 			wp_redirect($checkout_url);
 			exit;
 		} else {
-			$api_request_url =  WC()->api_request_url( $this->callback );
-			$listener_url = add_query_arg( 'order_id' , $order_id, $api_request_url );
-						
+			$api_request_url =  WC()->api_request_url($this->callback);
+			$listener_url = add_query_arg('order_id', $order_id, $api_request_url);
+
 			// Get the return url
-			$return_url = $this->return_url = $this->get_return_url( $order );
+			$return_url = $this->return_url = $this->get_return_url($order);
 
 			// Setup Paynow arguments
 			$MerchantId =       $this->merchant_id;
 			$MerchantKey =    	$this->merchant_key;
-			$ConfirmUrl =       $listener_url;
+			$ConfirmUrl  =      site_url() . "/wp-json/wc-paynow-express/v1/payment-result/" . $order_id;
 			$ReturnUrl =        $return_url;
 			$Reference =        "Order Number: " . $order->get_order_number();
 			$Amount =           $order->get_total();
 			$AdditionalInfo =   "";
 			$Status =           "Message";
-			$custEmail = 		$order->billing_email;
-			$custPhone = 		$order->billing_phone;
-
+			$custEmail = 		$order->get_billing_email();
+			// $custPhone = 		$order->get_billing_phone();
+			$custPhone =  !empty($order->get_meta('_ecocash_mobile_number')) ? $order->get_meta('_ecocash_mobile_number') : $order->get_billing_phone();
+			$method =  !empty($order->get_meta('_select_wallet')) ? $order->get_meta('_select_wallet') : "ecocash";
+			$MerchantId =       $method == "innbucks" ? $this->merchant_id_usd : $this->merchant_id;
+			$MerchantKey =    	 $method == "innbucks" ? $this->merchant_key_usd : $this->merchant_key;;
 			//set POST variables
 			$values = array(
 				'resulturl' => $ConfirmUrl,
@@ -413,16 +421,16 @@ class WC_Gateway_PaynowExpress extends WC_Payment_Gateway {
 				'additionalinfo' => $AdditionalInfo,
 				'authemail' => $custEmail, // customer email
 				'status' => $Status,
-				'method' => 'ecocash',
+				'method' => $method,
 				'phone' => $custPhone
 			);
-						
+
 			// Should probably use static methods to have WC_PaynowExpress_Helper::CreateMsg($a, $b);
 			$fields_string = (new WC_PaynowExpress_Helper)->CreateMsg($values, $MerchantKey);
 
 			$url = $this->initiate_transaction_url;
 			// $url = "https://www.paynow.co.zw/interface/remotetransaction";
-			
+
 			// Send API post request
 			$response = wp_remote_request($url, [
 				'timeout' => 45,
@@ -432,137 +440,322 @@ class WC_Gateway_PaynowExpress extends WC_Payment_Gateway {
 
 			// get the response from paynow
 			$result = $response['body'];
-			
-			if($result)
-			{
+
+
+			if ($result) {
 				$msg = (new WC_PaynowExpress_Helper)->ParseMsg($result);
-				
+
+
 				// first check status, take appropriate action
-				if ( strtolower( $msg["status"] ) == strtolower( ps_error ) ){
-					wc_add_notice( __( $msg['error'], 'gateway' ), 'error' );
+				if (strtolower($msg["status"]) == strtolower(ps_error)) {
+					wc_add_notice(__($msg['error'], 'gateway'), 'error');
 					wp_redirect($checkout_url);
 					exit;
-				}
-				elseif ( strtolower($msg["status"] ) == strtolower( ps_ok ) ){
-				
+				} elseif (strtolower($msg["status"]) == strtolower(ps_ok)) {
+
 					//second, check hash
 					$validateHash = (new WC_PaynowExpress_Helper)->CreateHash($msg, $MerchantKey);
-					if ( $validateHash != $msg["hash"] ) {
+					if ($validateHash != $msg["hash"]) {
 						$error =  "Paynow reply hashes do not match : " . $validateHash . " - " . $msg["hash"];
 					} else {
-						
-						$theProcessUrl = $msg["browserurl"];
 
-						// Update order data
-						$payment_meta['BrowserUrl'] = $msg["browserurl"];
+						// $theProcessUrl = $msg["browserurl"]; // Elphas - Checkout Endpoint does not return browser_url;
+
+						// // Update order data
+						// $payment_meta['BrowserUrl'] = $msg["browserurl"];
+
 						$payment_meta['PollUrl'] = $msg["pollurl"];
 						$payment_meta['PaynowReference'] = $msg["paynowreference"];
-						$payment_meta['Amount'] = $msg["amount"];
+						$payment_meta['Amount'] = $Amount;
 						$payment_meta['Status'] = "Sent to Paynow";
 
+						$body = $msg;
+
 						// if the post meta does not exist, wp calls add_post_meta
-						update_post_meta( $order_id, '_wc_paynowexpress_payment_meta', $payment_meta );
-						
+						update_post_meta($order_id, '_wc_paynowexpress_payment_meta', $payment_meta);
 					}
-				} else {						
+				} else {
 					//unknown status
 					$error =  "Invalid status in from Paynow, cannot continue";
 				}
+			} else {
+				$error = "Empty response from network request";
 			}
-			else
-			{
-			   $error = "Empty response from network request";
-			}
-			
+
 			// Choose where to go
-			if(isset($error))
-			{	
+			if (isset($error)) {
 				wp_redirect($checkout_url);
 				exit;
-			}
-			else
-			{ 
+			} else {
+
+				// Save paymend method picked by  the user
+				$order->update_meta_data('user_payment_method', $method);
+
+				//Update order status to stop woorcommerce from generating an order with the same id.
+				$order->update_status('pending');
+
+
+				// Save the order to persist the custom data
+				$order->save();
+
+
+				if (array_key_exists("authorizationcode", $body)) {
+					$innbuck_url = "schinn.wbpycode://innbucks.co.zw?pymInnCode=";
+					$qr_link = "https://chart.googleapis.com/chart?cht=qr&chs=200x200&chl=";
+
+					$body["expires_at"] =  $body['authorizationexpires'];
+					$body["url"] = $innbuck_url . $body["authorizationcode"];
+					$body["qr_link"] = $qr_link . $body["authorizationcode"];
+					$body["auth_code"] = $body["authorizationcode"];
+
 			?>
-			<div class="woocommerce-notices-wrapper">
-				<ul class="woocommerce-info" role="alert">
-					<li>Processing payment. Please check your phone.</li>
-				</ul>
-			</div>
-			<div class="wd-loader-wrapper">
-				<div class="wd-loader-content">
-					<div class="loader"></div>
-					<p style="text-align: center;">Processing payment. Please wait...</p>
-				</div>
-			</div>
-			<style>
-				.wd-loader-wrapper {
-					position: fixed;
-					width: 100vw;
-					height: 100vh;
-					background: rgba(255, 255, 255, .85);
-					z-index: 999999;
-					top: 0;
-					left: 0;
-					display: flex;
-					flex-direction: column;
-					justify-content: center;
-					align-items: center;
-					text-align: center;
+
+
+					<script type="text/javascript">
+
+					</script>
+
+					<style type="text/css">
+						div.instruction {
+							padding: .3em;
+							font-size: 1.2em;
+						}
+
+						div.bubble {
+							border-radius: .2em 1em;
+							display: inline-block;
+							*display: inline;
+							color: white;
+							background: #185ff9;
+							position: relative;
+							font-weight: bold;
+							letter-spacing: 1px;
+						}
+
+						div.code {
+							padding: .5em;
+							line-height: .5em;
+							border-radius: 1em;
+							font-size: 2em;
+							top: 1em;
+							left: -0.6em;
+						}
+
+						.loader,
+						.loader:after {
+							border-radius: 50%;
+							width: 6em;
+							height: 6em;
+						}
+
+						.loader {
+							margin: 30px auto;
+							font-size: 10px;
+							position: relative;
+							text-indent: -9999em;
+							border-top: 1.1em solid rgba(25, 140, 255, 0.2);
+							border-right: 1.1em solid rgba(25, 140, 255, 0.2);
+							border-bottom: 1.1em solid rgba(25, 140, 255, 0.2);
+							border-left: 1.1em solid #198cff;
+							-webkit-transform: translateZ(0);
+							-ms-transform: translateZ(0);
+							transform: translateZ(0);
+							-webkit-animation: load8 1.1s infinite linear;
+							animation: load8 1.1s infinite linear;
+						}
+
+						@-webkit-keyframes load8 {
+							0% {
+								-webkit-transform: rotate(0deg);
+								transform: rotate(0deg);
+							}
+
+							100% {
+								-webkit-transform: rotate(360deg);
+								transform: rotate(360deg);
+							}
+						}
+
+						@keyframes load8 {
+							0% {
+								-webkit-transform: rotate(0deg);
+								transform: rotate(0deg);
+							}
+
+							100% {
+								-webkit-transform: rotate(360deg);
+								transform: rotate(360deg);
+							}
+						}
+
+						.innbucks_container {
+							position: absolute;
+							top: 85%;
+							left: 50%;
+							-ms-transform: translateX(-50%) translateY(-65%);
+							-webkit-transform: translate(-50%, -50%);
+							transform: translate(-50%, -50%);
+							width: 80%;
+						}
+
+						@media (max-width:639px) {
+							.innbucks_container {
+								top: 0%;
+								opacity: 1;
+								background-color: #ffffff;
+								transform: translate(-50%, 0%);
+								width: 100vw;
+							}
+
+						}
+					</style>
+
+
+					<section style="width: 100%; height: 100%; overflow: hidden; margin-top:150px">
+						<div class="innbucks_container">
+							<div class="loader white"></div>
+							<div id="loading-info" style="text-align: center; color: #2d3040; font-family: Arial, sans-serif; font-size: 18px;">
+								Waiting for InnBucks payment from innbucks...
+								<p style="font-size: 10px; font-weight: normal">
+									Transaction is currently <span id="status">created</span>
+								</p>
+
+								<div style="font-size: 16px; font-weight: normal; margin-top: 50px;">
+
+
+									<div>
+										Your InnBucks payment authorization code is:
+
+										<div style="font-size: 24px; font-weight: bold; text-align: center; padding-bottom: 10px;">
+											<a href="<?php echo $body['url'] ?>">
+												<img src="<?php echo $body['qr_link'] ?>">
+											</a>
+											<br>
+											<?php echo number_format($body['auth_code'], 0, '', ' ')  ?>
+										</div>
+									</div>
+
+									<p>
+										<a style="background-color: #8c4a97; color: #ffffff; font-weight: bold; text-decoration: none; padding: 10px; border-radius: 4px;" href="<?php echo $body['url'] ?>">Pay in InnBucks App</a>
+									</p>
+
+									<p>
+										This code will expire at <strong> <?php echo $body['expires_at'] ?></strong>
+									</p>
+									<div>
+										If you've completed the transaction on your phone but still seeing this message <a href="<?php site_url() ?>" style="color: #185ff9; font-weight: bold; text-decoration: none;">click here</a> and we'll check for you!
+									</div>
+								</div>
+							</div>
+						</div>
+
+					</section>
+
+				<?php
+				} else {
+
+
+				?>
+
+
+					<div class="woocommerce-notices-wrapper">
+						<ul class="woocommerce-info" role="alert">
+							<li>Processing payment. Please check your phone.</li>
+						</ul>
+					</div>
+					<div class="wd-loader-wrapper">
+						<div class="wd-loader-content">
+							<div class="loader"></div>
+							<p style="text-align: center;">Processing payment. Please wait...</p>
+						</div>
+					</div>
+					<style>
+						.wd-loader-wrapper {
+							position: fixed;
+							width: 100vw;
+							height: 100vh;
+							background: rgba(255, 255, 255, .85);
+							z-index: 999999;
+							top: 0;
+							left: 0;
+							display: flex;
+							flex-direction: column;
+							justify-content: center;
+							align-items: center;
+							text-align: center;
+						}
+
+						.wd-loader-wrapper .loader {
+							border: 16px solid #f3f3f3;
+							/* Light grey */
+							border-top: 16px solid #3498db;
+							/* Blue */
+							border-radius: 50%;
+							width: 120px;
+							height: 120px;
+							animation: spin 2s linear infinite;
+							margin: 0 auto;
+							margin-bottom: 2rem;
+						}
+
+						@keyframes spin {
+							0% {
+								transform: rotate(0deg);
+							}
+
+							100% {
+								transform: rotate(360deg);
+							}
+						}
+					</style>
+
+				<?php
+
 				}
-				.wd-loader-wrapper .loader {
-					border: 16px solid #f3f3f3; /* Light grey */
-					border-top: 16px solid #3498db; /* Blue */
-					border-radius: 50%;
-					width: 120px;
-					height: 120px;
-					animation: spin 2s linear infinite;
-					margin: 0 auto;
-					margin-bottom: 2rem;
-				}
+				?>
+				<script>
+					// so that we limit the number of tries incase there is an issue.
+					// var tries = 0; 
 
-				@keyframes spin {
-					0% { transform: rotate(0deg); }
-					100% { transform: rotate(360deg); }
-				}
-			</style>
-			<script>
-				// so that we limit the number of tries incase there is an issue.
-				// var tries = 0; 
+					// var overlay = document.createElement('div');
 
-				// var overlay = document.createElement('div');
-			
-				(function pollTransaction(){
-					console.log('<?= $ReturnUrl ?>');
-					setTimeout(function(){
-						var params = {
-							method: 'POST',
-						};
+					(function pollTransaction() {
+						console.log('<?= $ReturnUrl ?>');
+						setTimeout(function() {
+							var params = {
+								method: 'POST'
+							};
 
-						fetch('/wp-json/wc-paynow-express/v1/order/<?php echo $order_id; ?>', params)
-						.then(function(res) {
-							return res.json();
-						})
-						.then(function(res){
-							try {
-								var data = JSON.parse(res);
+							fetch('/wp-json/wc-paynow-express/v1/order/<?php echo $order_id; ?>', params)
+								.then(function(res) {
+									return res.json();
+								})
 
-								if ( data.hasOwnProperty('complete') ) {
-									if (data.complete) {
-										window.location.replace('<?php echo $ReturnUrl; ?>');
-									} else {
-										window.location.replace(data.url)
+								.then(function(res) {
+									try {
+
+										var data = JSON.parse(res);
+
+										console.log(data);
+										if (data.hasOwnProperty('complete')) {
+											if (data.complete) {
+												window.location.replace('<?php echo $ReturnUrl; ?>');
+											} else {
+												window.location.replace(data.url)
+											}
+										}
+									} catch (e) {
+										console.log(e);
 									}
-								}
-							} catch(e) {}
-						});
+								});
 
-						pollTransaction();
-					}, 5000);
-				}());
-			
-			</script>
-			<?php
-			exit;
+							pollTransaction();
+						}, 5000);
+					}());
+				</script>
+
+<?php
+				exit;
 			}
 		}
 	} // End receipt_page()
