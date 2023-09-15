@@ -54,7 +54,7 @@ function woocommerce_paynow_express_init() {
 
 		public function __clone(){}
 
-		private function __wakeup() {}
+		public function __wakeup() {}
 
 		public function __construct()
 		{
