@@ -73,6 +73,19 @@ function woocommerce_paynow_express_init() {
 				register_rest_route( 'wc-paynow-express/v1', '/order/(?P<id>\d+)', array(
 					'methods' => 'POST',
 					'callback' => array(new WC_Gateway_PaynowExpress(), 'wc_express_check_status'),
+					'permission_callback' => '__return_true'
+				));
+
+				register_rest_route('wc-paynow-express/v1', '/payment-result/(?P<order_id>\d+)', array(
+					'methods' => 'POST',
+					'callback' => array(new WC_Gateway_PaynowExpress(), 'wc_express_listen_status'),
+					'args' => array(
+						'order_id' => array(
+							'validate_callback' => array(new WC_Gateway_PaynowExpress(), 'validate_order_id'),
+						),
+					),
+					'permission_callback' => '__return_true'
+					
 				));
 			} );
 
