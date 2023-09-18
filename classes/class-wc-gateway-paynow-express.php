@@ -40,7 +40,7 @@ class WC_Gateway_PaynowExpress extends WC_Payment_Gateway
 		$this->available_countries = array('ZW');
 
 		// Setup available currency codes.
-		$this->available_currencies = array('USD'); // nostro / rtgs ?
+		$this->available_currencies = array('USD', 'ZWL'); // nostro / rtgs ?
 
 		// Load the form fields.
 		$this->init_form_fields();
@@ -113,17 +113,6 @@ class WC_Gateway_PaynowExpress extends WC_Payment_Gateway
 				'type' => 'text',
 				'description' => __('This controls the description which the user sees during checkout.', 'woothemes'),
 				'default' => ''
-			),
-
-			'currency' => array(
-				'title' => __('Currency', 'woothemes'),
-				'type' => 'select',
-				'description' => __('Select the currency you are using for your orders', 'woothemes'),
-				'options' => array(
-					'usd' => __('USD', 'woothemes'),
-					'zwl' => __('ZWL Local', 'woothemes'),
-				),
-				'default' => 'usd', // Default selection
 			),
 			'merchant_id' => array(
 				'title' => __('Merchant ID(local)', 'woothemes'),
@@ -261,15 +250,16 @@ class WC_Gateway_PaynowExpress extends WC_Payment_Gateway
 
 		//Show Payment options according to what merchant has selected as their currency.
 		$options = array();
-		if ($this->merchant_currency == "usd") {
-			$options = array(
-				'ecocash_usd' => 'Ecocash USD',
-				'innbucks' => 'Innbucks'
-			);
-		} else {
+		$currency = get_woocommerce_currency();
+		if ($currency == "ZWL") {
 			$options = array(
 				'ecocash' => 'Ecocash',
 				'onemoney' => 'OneMoney'
+			);
+		} else {
+			$options = array(
+				'ecocash_usd' => 'Ecocash USD',
+				'innbucks' => 'Innbucks'
 			);
 		}
 		// Display the select_wallet field
@@ -376,28 +366,6 @@ class WC_Gateway_PaynowExpress extends WC_Payment_Gateway
 						handlePaymentMethodVisibility();
 					});
 				});
-
-				// document.addEventListener('DOMContentLoaded', function() {
-				// 	const selectWalletField = document.getElementById('select_wallet');
-				// 	const ecocashMobileNumberField = document.getElementById('ecocash_mobile_number');
-				// 	const checkoutForm = document.getElementsByClassName('woocommerce-checkout');
-
-				// 	checkoutForm[0].addEventListener('submit', function(event) {
-				// 		if (selectWalletField.value === 'onemoney') {
-				// 			const netoneRegex = /^(071|71)/;
-				// 			if (!netoneRegex.test(ecocashMobileNumberField.value)) {
-				// 				event.preventDefault();
-				// 				alert('For One Money wallet, the mobile number should start with 071 or 71.');
-				// 			}
-				// 		} else if (selectWalletField.value === 'ecocash') {
-				// 			const ecocashRegex = /^(078|78|77|077)/;
-				// 			if (!ecocashRegex.test(ecocashMobileNumberField.value)) {
-				// 				event.preventDefault();
-				// 				alert('For Ecocash wallet, the mobile number should start with 078, 78, 77, or 077.');
-				// 			}
-				// 		}
-				// 	});
-				// });
 			</script>
 			<?php
 		}
@@ -466,6 +434,7 @@ class WC_Gateway_PaynowExpress extends WC_Payment_Gateway
 
 			// Get the return url
 			$return_url = $this->return_url = $this->get_return_url($order);
+			$currency = $order->get_currency();
 
 			// Setup Paynow arguments
 			$MerchantId =       $this->merchant_id;
@@ -482,8 +451,8 @@ class WC_Gateway_PaynowExpress extends WC_Payment_Gateway
 			$method =  !empty($order->get_meta('_select_wallet')) ? $order->get_meta('_select_wallet') : "ecocash";
 
 
-			$MerchantId =       $method == "innbucks" || $method == "ecocash_usd"  ? $this->merchant_id_usd : $this->merchant_id;
-			$MerchantKey =    	  $method == "innbucks" || $method == "ecocash_usd" ? $this->merchant_key_usd : $this->merchant_key;
+			$MerchantId =       $currency == "ZWL" ? $this->merchant_id : $this->merchant_id_usd;
+			$MerchantKey =    	  $currency == "ZWL" ? $this->merchant_key : $this->merchant_key_usd;
 
 			$method = $method !== "ecocash_usd" ?  $method : "ecocash";
 			//set POST variables
@@ -1017,8 +986,9 @@ class WC_Gateway_PaynowExpress extends WC_Payment_Gateway
 
 		// Get payment method picked by user
 		$payment_method = get_post_meta($order_id, 'user_payment_method', true);
+		$currency = $order->get_currency();
 
-		$MerchantKey =  $payment_method == "innbucks" || $payment_method == "ecocash_usd" ? $this->merchant_key_usd : $this->merchant_key;
+		$MerchantKey =  $currency == "ZWL" ? $this->merchant_key : $this->merchant_key_usd;
 		//Remove order_id from request to verify hash;
 		$msg = array();
 		foreach ($request_data as $key => $value) {
@@ -1030,7 +1000,7 @@ class WC_Gateway_PaynowExpress extends WC_Payment_Gateway
 
 		if ($validateHash) {
 
-			// Save the 'reference' data to the order
+			// Save the paynow  data to the order object
 
 			$order_status = get_post_status($order->get_id());
 			if ($order_status != "pending") {
