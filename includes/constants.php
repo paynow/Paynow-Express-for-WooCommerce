@@ -1,6 +1,6 @@
 <?php
 //Define Constants
-define('WC_PAYNOW_EXPRESS_VERSION', '1.0.2');
+define('WC_PAYNOW_EXPRESS_VERSION', '1.0.1');
 if( !defined( 'ps_error' ) )                define('ps_error', 'error');
 if( !defined( 'ps_ok' ) )                   define('ps_ok','ok');
 if( !defined( 'ps_created_but_not_paid' ) ) define('ps_created_but_not_paid','created but not paid');
